@@ -1,103 +1,140 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import { collection, addDoc, orderBy, query, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { db, storage } from './lib/firebase';
+import Camera from './components/Camera';
+import Post from './components/Post';
+
+interface Post {
+  id: string;
+  username: string;
+  userImage: string;
+  image: string;
+  caption: string;
+  timestamp: any;
+  likes: number;
+  smileScore: number;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [showCamera, setShowCamera] = useState(false);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    // Subscribe to posts
+    const unsubscribe = onSnapshot(
+      query(collection(db, 'posts'), orderBy('timestamp', 'desc')),
+      (snapshot) => {
+        setPosts(
+          snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Post[]
+        );
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleCapture = async (image: string, smileScore: number) => {
+    setLoading(true);
+    try {
+      // Compress image before uploading
+      const img = new Image();
+      img.src = image;
+      await new Promise((resolve) => (img.onload = resolve));
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const maxWidth = 1080;
+      const maxHeight = 1080;
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height *= maxWidth / width;
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width *= maxHeight / height;
+          height = maxHeight;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx?.drawImage(img, 0, 0, width, height);
+      const compressedImage = canvas.toDataURL('image/jpeg', 0.8);
+
+      // Upload compressed image to Firebase Storage
+      const imageRef = ref(storage, `posts/${Date.now()}`);
+      await uploadString(imageRef, compressedImage, 'data_url');
+      const downloadURL = await getDownloadURL(imageRef);
+
+      // Add post to Firestore
+      await addDoc(collection(db, 'posts'), {
+        username: 'User', // Replace with actual user data when auth is implemented
+        userImage: 'https://placekitten.com/100/100', // Replace with actual user image
+        image: downloadURL,
+        caption: `Sharing my smile! 😊 (Smile Score: ${smileScore}%)`,
+        timestamp: serverTimestamp(),
+        likes: 0,
+        smileScore
+      });
+
+      setShowCamera(false);
+    } catch (error) {
+      console.error('Error uploading post:', error);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <main className="max-w-xl mx-auto p-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Smile App</h1>
+        <button
+          onClick={() => setShowCamera(!showCamera)}
+          className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+        >
+          {showCamera ? 'Close Camera' : 'Share Smile'}
+        </button>
+      </div>
+
+      {showCamera && (
+        <div className="mb-6">
+          <Camera onCapture={handleCapture} />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      )}
+
+      {loading && (
+        <div className="text-center py-4">
+          <div className="animate-pulse">
+            <p className="text-lg font-semibold">Processing your smile...</p>
+            <p className="text-sm text-gray-500">This will only take a moment</p>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-6">
+        {posts.map((post) => (
+          <Post
+            key={post.id}
+            username={post.username}
+            userImage={post.userImage}
+            image={post.image}
+            caption={post.caption}
+            timestamp={post.timestamp}
+            likes={post.likes}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+        ))}
+      </div>
+    </main>
   );
 }

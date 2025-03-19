@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as tf from '@tensorflow/tfjs';
 import '@tensorflow/tfjs-backend-webgl';
 
@@ -11,7 +11,7 @@ interface SmileDetectorProps {
 
 const SmileDetector: React.FC<SmileDetectorProps> = ({ videoRef, onSmileScoreChange }) => {
   const [isModelLoading, setIsModelLoading] = useState(true);
-  const requestRef = useRef<number>();
+  const requestRef = useRef<number | undefined>(undefined);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const contextRef = useRef<CanvasRenderingContext2D | null>(null);
 
@@ -95,7 +95,7 @@ const SmileDetector: React.FC<SmileDetectorProps> = ({ videoRef, onSmileScoreCha
     });
   };
 
-  const detectSmile = () => {
+  const detectSmile = useCallback(() => {
     if (!videoRef.current || !canvasRef.current || !contextRef.current || isModelLoading) {
       requestRef.current = requestAnimationFrame(detectSmile);
       return;
@@ -131,7 +131,7 @@ const SmileDetector: React.FC<SmileDetectorProps> = ({ videoRef, onSmileScoreCha
     }
 
     requestRef.current = requestAnimationFrame(detectSmile);
-  };
+  }, [videoRef, canvasRef, contextRef, isModelLoading, onSmileScoreChange]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -145,7 +145,7 @@ const SmileDetector: React.FC<SmileDetectorProps> = ({ videoRef, onSmileScoreCha
         cancelAnimationFrame(requestRef.current);
       }
     };
-  }, [isModelLoading]);
+  }, [isModelLoading, detectSmile]);
 
   return null;
 };
